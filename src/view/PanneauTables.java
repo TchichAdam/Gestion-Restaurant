@@ -1,27 +1,32 @@
 package view;
 
+import dao.CommandeDAO;
 import javax.swing.*;
 import java.awt.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class PanneauTables extends JPanel {
 
-    // Garder l'état de chaque table en mémoire
     private Map<Integer, String> etatsTable = new HashMap<>();
     private JPanel grille;
+    private CommandeDAO commandeDAO;
 
     public PanneauTables() {
+        commandeDAO = new CommandeDAO();
         setLayout(new BorderLayout());
         setBackground(FenetrePrincipale.GRIS_CLAIR);
         setBorder(BorderFactory.createEmptyBorder(20, 24, 20, 24));
 
-        // Initialiser les états
+        // Initialiser toutes les tables comme LIBRES par défaut
         for (int i = 1; i <= 8; i++) {
-            etatsTable.put(i, i == 3 || i == 5 || i == 8 ? "occupee" : "libre");
+            etatsTable.put(i, "libre");
         }
 
-        // En-tête
+        // Lire depuis MySQL les commandes "En cours" pour occuper les bonnes tables
+        chargerEtatDepuisDB();
+
         // En-tête
         JPanel entete = new JPanel(new BorderLayout());
         entete.setOpaque(false);
@@ -41,15 +46,20 @@ public class PanneauTables extends JPanel {
         btnActualiser.setFont(new Font("Arial", Font.BOLD, 12));
         btnActualiser.setBorder(BorderFactory.createEmptyBorder(6, 14, 6, 14));
         btnActualiser.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        btnActualiser.addActionListener(e -> rafraichirGrille());
+        btnActualiser.addActionListener(e -> {
+            // Réinitialiser et relire depuis MySQL
+            for (int i = 1; i <= 8; i++) {
+                etatsTable.put(i, "libre");
+            }
+            chargerEtatDepuisDB();
+            rafraichirGrille();
+        });
 
         entete.add(titre, BorderLayout.WEST);
         entete.add(btnActualiser, BorderLayout.EAST);
-
-        // Ajouter l'en-tête DIRECTEMENT au panneau principal (pas dans un scroll)
         add(entete, BorderLayout.NORTH);
 
-        // Grille dans un scroll
+        // Grille
         grille = new JPanel(new GridLayout(2, 4, 16, 16));
         grille.setOpaque(false);
         rafraichirGrille();
@@ -59,6 +69,26 @@ public class PanneauTables extends JPanel {
         scroll.setOpaque(false);
         scroll.getViewport().setOpaque(false);
         add(scroll, BorderLayout.CENTER);
+    }
+
+    // Lire les commandes "En cours" depuis MySQL et occuper les tables
+    private void chargerEtatDepuisDB() {
+        List<Object[]> commandes = commandeDAO.getToutesCommandes();
+        for (Object[] row : commandes) {
+            String etat        = (String) row[8]; // colonne État
+            String type        = (String) row[3]; // colonne Type
+            String tableAssign = (String) row[4]; // colonne Table
+
+            if ("En cours".equals(etat)
+                    && "Sur place".equals(type)
+                    && tableAssign != null
+                    && !tableAssign.equals("—")) {
+                try {
+                    int num = Integer.parseInt(tableAssign.replace("Table ", "").trim());
+                    etatsTable.put(num, "occupee");
+                } catch (NumberFormatException ignored) {}
+            }
+        }
     }
 
     private void rafraichirGrille() {
@@ -82,7 +112,6 @@ public class PanneauTables extends JPanel {
             BorderFactory.createEmptyBorder(12, 12, 12, 12)
         ));
 
-        // Infos table
         JPanel infos = new JPanel(new GridLayout(3, 1, 0, 4));
         infos.setOpaque(false);
 
@@ -103,36 +132,33 @@ public class PanneauTables extends JPanel {
         infos.add(lblEtat);
         carte.add(infos, BorderLayout.CENTER);
 
-        // Bouton changer état
         JButton btnChanger = new JButton(libre ? "Occuper" : "Libérer");
         btnChanger.setBackground(couleur);
         btnChanger.setForeground(Color.WHITE);
         btnChanger.setOpaque(true);
         btnChanger.setContentAreaFilled(true);
-        btnChanger.setBorderPainted(false);   // ← ajoute cette ligne
+        btnChanger.setBorderPainted(false);
         btnChanger.setFocusPainted(false);
         btnChanger.setFont(new Font("Arial", Font.BOLD, 11));
         btnChanger.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-        btnChanger.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));   
+        btnChanger.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         btnChanger.addActionListener(e -> {
-            // Basculer l'état
-            String nouvelEtat = libre ? "occupee" : "libre";
-            etatsTable.put(numero, nouvelEtat);
-            rafraichirGrille(); // redessiner
+            etatsTable.put(numero, libre ? "occupee" : "libre");
+            rafraichirGrille();
         });
 
         carte.add(btnChanger, BorderLayout.SOUTH);
         return carte;
     }
+
     public void occuperTable(int numero) {
         etatsTable.put(numero, "occupee");
         rafraichirGrille();
     }
-    
+
     public void libererTable(int numero) {
         etatsTable.put(numero, "libre");
         rafraichirGrille();
     }
-    
 }
